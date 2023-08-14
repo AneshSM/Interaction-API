@@ -1,7 +1,9 @@
 import {NextAuthOptions} from 'next-auth'
-import GitHubProvider from 'next-auth/providers/github'
+import GitHubProvider, { GithubProfile } from 'next-auth/providers/github'
 import CredentialsProvider from 'next-auth/providers/credentials'
-import {GithubProfile} from 'next-auth/providers/github'
+import GoogleProvider from 'next-auth/providers/google'
+import { connectToMDB } from '@db/mangodb'
+import User from '@models/users'
 export const options:NextAuthOptions={
     providers:[
         CredentialsProvider({
@@ -28,6 +30,10 @@ export const options:NextAuthOptions={
                 }
             }
         }),
+        GoogleProvider({
+            clientId:process.env.GOOGLE_ID as string,
+            clientSecret:process.env.GOOGLE_SECRET as string,
+        }),
         GitHubProvider({
             profile(profile:GithubProfile){
                 // console.log(profile)
@@ -47,9 +53,32 @@ export const options:NextAuthOptions={
             if(user)token.role=user.role
             return token
         },
-        session({session,token}){
-            if(session?.user)session.user.role=token.role
+        async session({session,token}){
+            if(session?.user){ 
+                session.user.role=token.role
+                const userData=await User.findOne({email:session.user.email})
+                session.user.id=userData._id.toString()
+            }
             return session
+        },
+        async signIn({profile}) {
+            try {
+                await connectToMDB();
+
+                if(await User.findOne({ email: profile?.email })){
+                    return true
+                }else{
+                    User.create({
+                        email:profile?.email,
+                        username:profile?.name?.replace(" ","").toLocaleLowerCase(),
+                        image:profile?.image,
+                        role:'user'
+                    })
+                }
+                
+            } catch (error) {
+                
+            }
         }
-    }
+    },         
 }
